@@ -1,0 +1,21 @@
+# ============================================================
+# .gitignore — visualizador_dispositivos_roku
+# ============================================================
+
+# Arquivos de configuracao com IPs/senhas locais
+tvs_config.json
+visualizador.html
+
+# Cache do Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+*.log
+
+# Temporarios do editor
+.vscode/
+.idea/
+*.swp
+*~

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Visualizador</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Remove barras de rolagem da janela principal */
+            background-color: #000; /* Fundo preto elegante */
+        }
+        iframe {
+            width: 100vw; /* 100% da largura da viewport (adapta à TV) */
+            height: 100vh; /* 100% da altura da viewport */
+            border: none;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- O iframe que vai exibir os sites -->
+    <iframe id="displayFrame" src="http://192.168.0.200:8090/seu_dashboard_1"></iframe>
+
+    <script>
+        // Lista de URLs para alternar
+        const urls = [
+            "http://192.168.0.200:8090/seu_dashboard_1",
+            "http://192.168.0.200:8090/seu_dashboard_2" // Adicione quantos links quiser
+        ];
+
+        let currentIndex = 0;
+        const iframe = document.getElementById('displayFrame');
+
+        // Tempo em milissegundos (5 minutos = 5 * 60 * 1000)
+        const tempoAlternancia = 5 * 60 * 1000; 
+
+        function alternarSite() {
+            // Avança para o próximo índice, voltando a 0 se chegar no final da lista
+            currentIndex = (currentIndex + 1) % urls.length;
+            iframe.src = urls[currentIndex];
+        }
+
+        // Configura o temporizador para chamar a função de alternância a cada 5 minutos
+        setInterval(alternarSite, tempoAlternancia);
+    </script>
+</body>
+</html>

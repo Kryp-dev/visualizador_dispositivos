@@ -1,0 +1,12 @@
+[
+  {
+    "id": "tv-01",
+    "nome": "TV SETOR EXEMPLO",
+    "ip": "192.168.0.100",
+    "channel_id": "880042",
+    "watchdog": true,
+    "schedule_on": "07:00",
+    "schedule_off": "18:00",
+    "enabled": true
+  }
+]

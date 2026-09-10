@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="MainScene" extends="Scene">
+    <script type="text/brightscript" uri="pkg:/components/MainScene.brs" />
+    <children>
+        <Rectangle
+            id="background"
+            color="0x000000FF"
+            width="1920"
+            height="1080"
+            translation="[0, 0]" />
+
+        <Poster
+            id="poster1"
+            translation="[0, 0]"
+            width="1920"
+            height="1080"
+            loadDisplayMode="scaleToFit" 
+            visible="true" />
+
+        <Poster
+            id="poster2"
+            translation="[0, 0]"
+            width="1920"
+            height="1080"
+            loadDisplayMode="scaleToFit" 
+            visible="false" />
+
+        <Timer
+            id="refreshTimer"
+            repeat="true"
+            duration="5" />
+    </children>
+</component>
