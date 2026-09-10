@@ -35,7 +35,7 @@ visualizador_dispositivos/
 └── README.md
 ```
 
-> **Atenção:** `tvs_config.json` e `visualizador.html` contêm IPs internos da rede e foram adicionados ao `.gitignore`. Use os arquivos `.example` como base.
+> **Atenção:** Copie os arquivos `.example` e renomeie-os para os nomes oficiais (`tvs_config.json` e `visualizador.html`), depois preencha com os IPs da sua rede.
 
 ---
 
@@ -53,16 +53,14 @@ visualizador_dispositivos/
 
 ## Como Instalar
 
-### Passo 1: Copiar a Pasta
-Copie `modulos/visualizador_dispositivos` para a pasta `modulos` do seu projeto FastAPI.
-
-### Passo 2: Renomear os Exemplos
+### Passo 1: Configurar os Arquivos de Exemplo
+Copie e renomeie:
 - `tvs_config.example.json` → **`tvs_config.json`**
 - `visualizador.example.html` → **`visualizador.html`**
 
 Preencha com os IPs da sua rede.
 
-### Passo 3: Importar no `main.py`
+### Passo 2: Importar no `main.py`
 
 ```python
 from fastapi import FastAPI
