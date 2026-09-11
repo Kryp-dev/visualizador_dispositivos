@@ -249,19 +249,49 @@ async def _launch_with_retry(tv: dict, source: str):
         _tv_state[tid]["launch_in_progress"] = False
 
 
+def _is_within_schedule(tv: dict) -> bool:
+    """Retorna True se o horario atual estiver dentro do periodo de funcionamento da TV (entre schedule_on e schedule_off).
+    Se nao houver schedule configurado, retorna True."""
+    on_time = tv.get("schedule_on")
+    off_time = tv.get("schedule_off")
+    if not on_time or not off_time:
+        return True
+    
+    try:
+        now = datetime.now().time()
+        t_on = datetime.strptime(on_time, "%H:%M").time()
+        t_off = datetime.strptime(off_time, "%H:%M").time()
+        
+        if t_on < t_off:
+            return t_on <= now <= t_off
+        else: # cruza a meia noite
+            return now >= t_on or now <= t_off
+    except Exception:
+        return True
+
+
 async def _trigger_launch_if_ready(tv: dict, source: str = "auto"):
     if not tv.get("enabled"):
         return
+        
+    # Se o trigger for automatico (nao manual e nem o proprio scheduler ligando), 
+    # respeita o horario programado de desligamento para evitar loop noturno.
+    if source in ("SSDP", "polling", "watchdog"):
+        if not _is_within_schedule(tv):
+            # Nao faz log de warning para nao poluir a noite toda, apenas debug.
+            logger.debug(f"[ROKU ECP] [{tv.get('nome')}] Fora do horario programado. Ignorando trigger '{source}'.")
+            return
+
     channel_id = tv.get("channel_id", "")
     if not channel_id:
         logger.warning(f"[ROKU ECP] [{tv['nome']}] channel_id nao configurado.")
         return
     tid = tv["id"]
     state = _tv_state.get(tid, {})
-    now = time.time()
+    now_time = time.time()
     last = state.get("last_launch_time", 0.0)
-    if last > 0 and (now - last) < _LAUNCH_COOLDOWN_SECONDS:
-        remaining = int(_LAUNCH_COOLDOWN_SECONDS - (now - last))
+    if last > 0 and (now_time - last) < _LAUNCH_COOLDOWN_SECONDS:
+        remaining = int(_LAUNCH_COOLDOWN_SECONDS - (now_time - last))
         logger.debug(f"[ROKU ECP] [{tv['nome']}] Cooldown ativo ({remaining}s). Ignorando.")
         return
     asyncio.create_task(_launch_with_retry(tv, source))
