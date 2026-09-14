@@ -6,3 +6,7 @@ ui_resolutions=fhd
 rsg_version=1.3
 mm_icon_focus_hd=pkg:/images/icon.png
 splash_screen_hd=pkg:/images/icon.png
+
+# URL da imagem exibida na TV (fallback quando o app nao receber contentId via ECP).
+# Ex.: snapshot_url=http://192.168.0.100:8080/api/snapshot.png
+snapshot_url=

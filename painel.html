@@ -321,11 +321,15 @@
     </div>
     <div class="field">
       <label>Endereço IP</label>
-      <input id="f-ip" type="text" placeholder="Ex: 10.50.3.91">
+      <input id="f-ip" type="text" placeholder="Ex: 192.168.0.100">
     </div>
     <div class="field" style="position:relative">
       <label>Channel ID do App <span id="btn-buscar-apps" style="margin-left:8px; color:var(--accent); cursor:pointer; font-size:11px;">(buscar apps na TV →)</span></label>
       <input id="f-channel" type="text" placeholder="Ex: 880042">
+    </div>
+    <div class="field">
+      <label>URL da imagem (snapshot) <span style="font-weight:400;color:var(--muted)">— opcional, injetada via ECP</span></label>
+      <input id="f-image" type="text" placeholder="Ex: http://servidor:8080/api/snapshot.png">
     </div>
 
     <div class="field">
@@ -515,6 +519,7 @@ function openModal(tv = null) {
   document.getElementById('f-nome').value    = tv?.nome       || '';
   document.getElementById('f-ip').value      = tv?.ip         || '';
   document.getElementById('f-channel').value = tv?.channel_id || '';
+  document.getElementById('f-image').value    = tv?.image_url  || '';
   document.getElementById('f-watchdog').checked = tv?.watchdog ?? true;
   document.getElementById('f-enabled').checked  = tv?.enabled  ?? true;
   const diasIniciais = tv ? rulesToDays(tv) : DIAS.map(() => ({ on: '08:00', off: '18:00' }));
@@ -637,6 +642,7 @@ async function saveTV() {
     nome:         document.getElementById('f-nome').value.trim(),
     ip:           document.getElementById('f-ip').value.trim(),
     channel_id:   document.getElementById('f-channel').value.trim(),
+    image_url:    document.getElementById('f-image').value.trim(),
     schedules,
     schedule_on:  def ? def.on : '',
     schedule_off: def ? def.off : '',

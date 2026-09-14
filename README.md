@@ -107,7 +107,7 @@ Cada TV aceita uma lista de **regras de horário** no campo `schedules`. Cada re
 {
   "id": "tv-01",
   "nome": "TV SERRALHERIA",
-  "ip": "10.50.3.91",
+  "ip": "192.168.0.100",
   "channel_id": "880042",
   "watchdog": true,
   "enabled": true,
@@ -138,6 +138,36 @@ Regras:
 - Horários de `off` antes de `on` cruzam a meia-noite (funcionamento noturno).
 
 **Compatibilidade:** o formato antigo `schedule_on` / `schedule_off` segue funcionando e vale para todos os dias. O sistema usa `schedules` quando presente; caso contrário, cai no formato legado. TVs sem nenhum horário configurado ficam sempre ativas (gerenciadas apenas pelo watchdog).
+
+---
+
+## URL da Imagem (Kiosk) — Parametrizada
+
+O app kiosk (`kiosk-roku/`) exibe uma imagem gerada pelo servidor. A URL **não é mais fixa no código**; ela é resolvida nesta ordem:
+
+1. **`image_url`** configurada na TV (`tvs_config.json` ou painel → campo "URL da imagem") é injetada no launch via ECP deep-link (`contentId`) — recomendado, permite uma URL por TV;
+2. **`ROKU_SNAPSHOT_URL`** (variável de ambiente do servidor) — valor padrão para todas as TVs quando o campo individual está vazio;
+3. **`snapshot_url`** no `manifest` do app Roku — fallback quando o app abre sem o ECP (ex.: lançado manualmente pelo controle).
+
+```bash
+# Linux/Mac (systemd, .env ou export)
+export ROKU_SNAPSHOT_URL="http://192.168.0.100:8080/api/snapshot.png"
+```
+
+```powershell
+# Windows PowerShell
+$env:ROKU_SNAPSHOT_URL = "http://192.168.0.100:8080/api/snapshot.png"
+```
+
+```json
+{
+  "id": "tv-01",
+  "nome": "TV SERRALHERIA",
+  "ip": "192.168.0.100",
+  "channel_id": "880042",
+  "image_url": "http://192.168.0.100:8080/api/snapshot.png"
+}
+```
 
 ---
 

@@ -6,6 +6,7 @@
     "channel_id": "880042",
     "watchdog": true,
     "enabled": true,
+    "image_url": "",
     "schedules": [
       { "days": [0, 1, 2, 3], "on": "06:50", "off": "17:55" },
       { "days": [4],           "on": "07:30", "off": "16:00" }

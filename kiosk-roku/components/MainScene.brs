@@ -1,5 +1,12 @@
 sub init()
-    m.imageUrl = "http://10.50.1.58:8080/api/snapshot.png"
+    ' URL da imagem vem da injecao via ECP (contentId) ou do manifest (snapshot_url).
+    ' Ex.: GET http://192.168.0.100:8060/launch/880042?contentId=http://servidor:8080/api/snapshot.png
+    m.imageUrl = m.top.contentId
+    if m.imageUrl = invalid or m.imageUrl = "" then
+        m.appInfo = CreateObject("roAppInfo")
+        m.imageUrl = m.appInfo.GetValue("snapshot_url")
+    end if
+    if m.imageUrl = invalid then m.imageUrl = ""
     
     m.poster1 = m.top.findNode("poster1")
     m.poster2 = m.top.findNode("poster2")
@@ -23,6 +30,8 @@ sub onTimer()
 end sub
 
 sub carregarImagem()
+    if m.imageUrl = "" then return
+    
     m.counter = m.counter + 1
     nextUrl = m.imageUrl + "?c=" + m.counter.toStr()
     

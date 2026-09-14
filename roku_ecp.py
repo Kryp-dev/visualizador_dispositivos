@@ -32,6 +32,7 @@ import struct
 import time
 import uuid
 import logging
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Union
@@ -47,6 +48,11 @@ logger = logging.getLogger("roku_ecp")
 # Configuracoes
 # ---------------------------------------------------------------------------
 ROKU_ECP_PORT: int = 8060
+
+# URL padrao da imagem exibida pelo app kiosk. Pode ser sobrescrita por TV
+# (campo "image_url" no tvs_config.json) ou pela variavel ROKU_SNAPSHOT_URL.
+# Quando vazia, o app usa o valor de "snapshot_url" do manifest da app.
+_DEFAULT_SNAPSHOT_URL: str = os.getenv("ROKU_SNAPSHOT_URL", "")
 
 _LAUNCH_COOLDOWN_SECONDS: int = 60
 _RETRY_MAX_ATTEMPTS: int = 5
@@ -169,9 +175,18 @@ async def _roku_power(ip: str, action: str) -> bool:
         return False
 
 
-async def _roku_launch(ip: str, channel_id: str) -> bool:
-    """Envia POST ECP para lancar o app. Retorna True se sucesso."""
+def _tv_snapshot_url(tv: dict) -> str:
+    """URL da imagem usada pelo app kiosk nesta TV (config > env > vazio)."""
+    return tv.get("image_url") or _DEFAULT_SNAPSHOT_URL
+
+
+async def _roku_launch(ip: str, channel_id: str, snapshot_url: str = "") -> bool:
+    """Envia POST ECP para lancar o app. Retorna True se sucesso.
+    Se snapshot_url for informado, injeta via contentId (deep link) para o
+    app kiosk buscar a imagem do servidor certo."""
     url = f"http://{ip}:{ROKU_ECP_PORT}/launch/{channel_id}"
+    if snapshot_url:
+        url += "?contentId=" + urllib.parse.quote(snapshot_url, safe="")
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.post(url)
@@ -238,7 +253,7 @@ async def _launch_with_retry(tv: dict, source: str):
                 logger.warning(f"[ROKU ECP] [{tv['nome']}] Tentativa {attempt}: TV nao responde. Aguardando {_RETRY_INTERVAL_SECONDS}s...")
                 await asyncio.sleep(_RETRY_INTERVAL_SECONDS)
                 continue
-            success = await _roku_launch(ip, channel_id)
+            success = await _roku_launch(ip, channel_id, snapshot_url=_tv_snapshot_url(tv))
             if success:
                 _tv_state[tid]["last_launch_time"] = time.time()
                 logger.info(f"[ROKU ECP] [{tv['nome']}] App aberto na tentativa {attempt}.")
@@ -674,6 +689,7 @@ class TVCreate(BaseModel):
     schedule_on: str = ""
     schedule_off: str = ""
     schedules: List[ScheduleRule] = []
+    image_url: str = ""
     enabled: bool = True
 
 
@@ -685,6 +701,7 @@ class TVUpdate(BaseModel):
     schedule_on: Optional[str] = None
     schedule_off: Optional[str] = None
     schedules: Optional[List[ScheduleRule]] = None
+    image_url: Optional[str] = None
     enabled: Optional[bool] = None
 
 
