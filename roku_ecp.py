@@ -19,6 +19,8 @@ Endpoints FastAPI:
   POST   /api/roku/tvs/{id}/power-off  - desliga a tela
   GET    /api/roku/tvs/{id}/status      - status da TV
   GET    /api/roku/tvs/{id}/apps        - apps instalados
+  GET    /api/roku/visualizador         - pagina kiosk exibida nas TVs
+  GET    /api/roku/painel               - painel de gerenciamento (admin)
 """
 
 import asyncio
@@ -32,7 +34,7 @@ import uuid
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -249,25 +251,110 @@ async def _launch_with_retry(tv: dict, source: str):
         _tv_state[tid]["launch_in_progress"] = False
 
 
-def _is_within_schedule(tv: dict) -> bool:
-    """Retorna True se o horario atual estiver dentro do periodo de funcionamento da TV (entre schedule_on e schedule_off).
-    Se nao houver schedule configurado, retorna True."""
-    on_time = tv.get("schedule_on")
-    off_time = tv.get("schedule_off")
-    if not on_time or not off_time:
+# ---------------------------------------------------------------------------
+# Agenda por dia da semana
+# ---------------------------------------------------------------------------
+
+# Dias da semana usados em "schedules" (mesmo padrao de datetime.weekday):
+#   0=segunda, 1=terca, 2=quarta, 3=quinta, 4=sexta, 5=sabado, 6=domingo
+# Nomes em portugues/ingles tambem sao aceitos no JSON.
+_WEEKDAY_PT = {
+    "segunda": 0, "segunda-feira": 0, "segundas": 0,
+    "terca": 1, "terca-feira": 1, "tercas": 1,
+    "quarta": 2, "quarta-feira": 2, "quartas": 2,
+    "quinta": 3, "quinta-feira": 3, "quintas": 3,
+    "sexta": 4, "sexta-feira": 4, "sextas": 4,
+    "sabado": 5, "sábado": 5, "sabados": 5,
+    "domingo": 6, "domingos": 6,
+}
+_WEEKDAY_EN = {
+    "mon": 0, "monday": 0, "tue": 1, "tuesday": 1, "wed": 2,
+    "wednesday": 2, "thu": 3, "thur": 3, "thurs": 3, "thursday": 3,
+    "fri": 4, "friday": 4, "sat": 5, "saturday": 5, "sun": 6, "sunday": 6,
+}
+
+
+def _normalize_days(days) -> List[int]:
+    """Converte a lista de dias de uma regra para numeros 0-6. Vazio = todos os dias."""
+    if not days:
+        return []
+    result: List[int] = []
+    seen = set()
+    for d in days:
+        if isinstance(d, bool):
+            continue
+        if isinstance(d, int):
+            num = d % 7
+        else:
+            s = str(d).strip().lower()
+            if s in _WEEKDAY_PT:
+                num = _WEEKDAY_PT[s]
+            elif s in _WEEKDAY_EN:
+                num = _WEEKDAY_EN[s]
+            else:
+                continue
+        if num not in seen:
+            seen.add(num)
+            result.append(num)
+    return result
+
+
+def _has_any_schedule(tv: dict) -> bool:
+    """True se a TV possui qualquer configuracao de horario (nova ou legada)."""
+    if tv.get("schedules"):
         return True
-    
+    return bool(tv.get("schedule_on") or tv.get("schedule_off"))
+
+
+def _rule_active_today(rule: dict, today: int) -> bool:
+    days = _normalize_days(rule.get("days"))
+    if not days:
+        return True  # dias vazios = todos os dias
+    return today in days
+
+
+def _today_schedule_rules(tv: dict) -> Optional[List[dict]]:
+    """Retorna as regras de horario ativas hoje.
+
+    - None             -> a TV nao tem agenda configurada (fica sempre ativa)
+    - lista vazia      -> tem agenda, mas hoje nao ha regra (dia desligado)
+    - lista com regras -> regras que valem para o dia atual (podem ser varias)
+    """
+    schedules = tv.get("schedules")
+    if schedules:
+        today = datetime.now().weekday()
+        return [r for r in schedules if _rule_active_today(r, today)]
+    on_time = tv.get("schedule_on", "")
+    off_time = tv.get("schedule_off", "")
+    if on_time or off_time:
+        return [{"days": [], "on": on_time, "off": off_time}]
+    return None
+
+
+def _rule_in_interval(on_time: str, off_time: str, now) -> bool:
     try:
-        now = datetime.now().time()
         t_on = datetime.strptime(on_time, "%H:%M").time()
         t_off = datetime.strptime(off_time, "%H:%M").time()
-        
-        if t_on < t_off:
-            return t_on <= now <= t_off
-        else: # cruza a meia noite
-            return now >= t_on or now <= t_off
     except Exception:
+        return False
+    if t_on < t_off:
+        return t_on <= now <= t_off
+    return now >= t_on or now <= t_off  # cruza a meia noite
+
+
+def _is_within_schedule(tv: dict) -> bool:
+    """True se o horario atual estiver dentro do periodo de funcionamento da TV
+    para o dia de hoje (considera agenda por dia da semana). Sem agenda, True."""
+    if not _has_any_schedule(tv):
         return True
+    rules = _today_schedule_rules(tv) or []
+    if not rules:
+        return False
+    now = datetime.now().time()
+    for rule in rules:
+        if _rule_in_interval(rule.get("on", ""), rule.get("off", ""), now):
+            return True
+    return False
 
 
 async def _trigger_launch_if_ready(tv: dict, source: str = "auto"):
@@ -350,36 +437,59 @@ async def _power_on_with_retry(tv: dict):
 
 
 async def _scheduler():
-    """Verifica a hora atual e aplica schedule_on/schedule_off para cada TV cadastrada."""
+    """Verifica a hora atual e aplica a agenda de cada TV cadastrada.
+
+    Suporta agendamento por dia da semana (campo "schedules"): cada regra
+    tem dias da semana + horario de ligar/desligar. Dias sem regra ficam
+    desligados (ex.: fim de semana). O formato legado schedule_on/schedule_off
+    continua funcionando e vale para todos os dias.
+    """
     logger.info("[ROKU SCHEDULER] Agendador iniciado.")
 
-    # Rastreia quais TVs ja receberam o comando neste minuto exato (evita envio duplo)
-    _last_on_fired:  dict = {}
-    _last_off_fired: dict = {}
+    # Rastreia os eventos ja disparados no dia (por TV + regra + evento).
+    # A data na chave evita re-disparo no mesmo dia e corrige o disparo
+    # duplicado/omitido entre dias seguidos com o mesmo horario.
+    _fired_day: dict = {}
 
     while True:
-        now_str = datetime.now().strftime("%H:%M")
+        now = datetime.now()
+        now_str = now.strftime("%H:%M")
+        today_key = now.strftime("%Y-%m-%d")
         tvs = _load_tvs()
 
         for tv in tvs:
             if not tv.get("enabled"):
                 continue
             _init_state(tv)
-            tid      = tv["id"]
-            on_time  = tv.get("schedule_on",  "")
-            off_time = tv.get("schedule_off", "")
+            tid = tv["id"]
 
-            # Horario de LIGAR
-            if on_time and now_str == on_time and _last_on_fired.get(tid) != now_str:
-                _last_on_fired[tid] = now_str
-                logger.info(f"[ROKU SCHEDULER] [{tv['nome']}] Horario de LIGAR ({on_time}). Iniciando power-on com retry...")
-                asyncio.create_task(_power_on_with_retry(tv))
+            if not _has_any_schedule(tv):
+                continue
 
-            # Horario de DESLIGAR
-            if off_time and now_str == off_time and _last_off_fired.get(tid) != now_str:
-                _last_off_fired[tid] = now_str
-                logger.info(f"[ROKU SCHEDULER] [{tv['nome']}] Horario de DESLIGAR ({off_time}). Enviando PowerOff...")
-                await _roku_power(tv["ip"], "PowerOff")
+            rules = _today_schedule_rules(tv) or []
+            if not rules:
+                logger.debug(f"[ROKU SCHEDULER] [{tv['nome']}] Hoje nao ha horario programado. TV fica desligada.")
+                continue
+
+            for rule_idx, rule in enumerate(rules):
+                on_time  = rule.get("on",  "")
+                off_time = rule.get("off", "")
+
+                # Horario de LIGAR
+                if on_time and now_str == on_time:
+                    key = f"on|{tid}|{rule_idx}"
+                    if _fired_day.get(key) != today_key:
+                        _fired_day[key] = today_key
+                        logger.info(f"[ROKU SCHEDULER] [{tv['nome']}] Horario de LIGAR ({on_time}). Iniciando power-on com retry...")
+                        asyncio.create_task(_power_on_with_retry(tv))
+
+                # Horario de DESLIGAR
+                if off_time and now_str == off_time:
+                    key = f"off|{tid}|{rule_idx}"
+                    if _fired_day.get(key) != today_key:
+                        _fired_day[key] = today_key
+                        logger.info(f"[ROKU SCHEDULER] [{tv['nome']}] Horario de DESLIGAR ({off_time}). Enviando PowerOff...")
+                        await _roku_power(tv["ip"], "PowerOff")
 
         await asyncio.sleep(30)  # checa a cada 30s para nao perder o minuto exato
 
@@ -550,6 +660,12 @@ async def start_roku_watcher():
 # Pydantic Models
 # ---------------------------------------------------------------------------
 
+class ScheduleRule(BaseModel):
+    days: List[Union[int, str]] = []
+    on: str = ""
+    off: str = ""
+
+
 class TVCreate(BaseModel):
     nome: str
     ip: str
@@ -557,6 +673,7 @@ class TVCreate(BaseModel):
     watchdog: bool = True
     schedule_on: str = ""
     schedule_off: str = ""
+    schedules: List[ScheduleRule] = []
     enabled: bool = True
 
 
@@ -567,6 +684,7 @@ class TVUpdate(BaseModel):
     watchdog: Optional[bool] = None
     schedule_on: Optional[str] = None
     schedule_off: Optional[str] = None
+    schedules: Optional[List[ScheduleRule]] = None
     enabled: Optional[bool] = None
 
 
@@ -725,5 +843,15 @@ async def get_visualizador():
     path = _BASE_DIR / "visualizador.html"
     if not path.exists():
         raise HTTPException(status_code=404, detail="Visualizador não encontrado no módulo.")
+    return FileResponse(path)
+
+
+@roku_router.get("/painel")
+async def get_painel():
+    """Retorna a página de gerenciamento (admin) do visualizador de dispositivos."""
+    from fastapi.responses import FileResponse
+    path = _BASE_DIR / "painel.html"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Painel não encontrado no módulo.")
     return FileResponse(path)
 

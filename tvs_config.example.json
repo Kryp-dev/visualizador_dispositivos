@@ -5,8 +5,10 @@
     "ip": "192.168.0.100",
     "channel_id": "880042",
     "watchdog": true,
-    "schedule_on": "07:00",
-    "schedule_off": "18:00",
-    "enabled": true
+    "enabled": true,
+    "schedules": [
+      { "days": [0, 1, 2, 3], "on": "06:50", "off": "17:55" },
+      { "days": [4],           "on": "07:30", "off": "16:00" }
+    ]
   }
 ]

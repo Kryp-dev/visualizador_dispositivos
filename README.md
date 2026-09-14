@@ -23,6 +23,7 @@ O sistema foi projetado com uma arquitetura **plugin-friendly**: cada tipo de di
 visualizador_dispositivos/
 ├── __init__.py                  # Pacote Python
 ├── roku_ecp.py                  # Módulo Roku ECP (controlador + watchdog + scheduler)
+├── painel.html                  # Página de gerenciamento (admin) das TVs
 ├── tvs_config.example.json      # Exemplo do banco de configuração das TVs
 ├── visualizador.example.html    # Exemplo da página HTML exibida nas TVs
 ├── kiosk-roku/                  # App BrightScript nativo para TVs Roku
@@ -91,7 +92,52 @@ async def startup_event():
 | `POST` | `/api/roku/tvs/{id}/power-off` | Desliga a TV |
 | `GET` | `/api/roku/tvs/{id}/status` | Status detalhado |
 | `GET` | `/api/roku/tvs/{id}/apps` | Lista apps instalados |
-| `GET` | `/api/roku/visualizador` | Serve o HTML do kiosk |
+| `GET` | `/api/roku/visualizador` | Serve o HTML do kiosk (tela das TVs) |
+| `GET` | `/api/roku/painel` | Serve o painel de gerenciamento (admin) |
+
+O **painel de gerenciamento** (cadastrar/editar TVs, botões liga/desliga/app e agenda semanal) está pronto e acompanha o módulo. Após subir o servidor, acesse `http://IP:PORTA/api/roku/painel`.
+
+---
+
+## Agendamento por Dia da Semana
+
+Cada TV aceita uma lista de **regras de horário** no campo `schedules`. Cada regra define os dias da semana (`days`) e os horários de ligar (`on`) e desligar (`off`):
+
+```json
+{
+  "id": "tv-01",
+  "nome": "TV SERRALHERIA",
+  "ip": "10.50.3.91",
+  "channel_id": "880042",
+  "watchdog": true,
+  "enabled": true,
+  "schedules": [
+    { "days": [0, 1, 2, 3], "on": "06:50", "off": "17:55" },
+    { "days": [4],           "on": "07:30", "off": "16:00" }
+  ]
+}
+```
+
+**Dias da semana** seguem o padrão do Python (`datetime.weekday()`):
+
+| Número | Dia | Alternativa em texto |
+|---|---|---|
+| 0 | Segunda | `segunda`, `mon` |
+| 1 | Terça | `terca`, `tue` |
+| 2 | Quarta | `quarta`, `wed` |
+| 3 | Quinta | `quinta`, `thu` |
+| 4 | Sexta | `sexta`, `fri` |
+| 5 | Sábado | `sabado`, `sat` |
+| 6 | Domingo | `domingo`, `sun` |
+
+Regras:
+
+- **Dias sem regra ficam desligados** o dia inteiro — no exemplo acima, sábado e domingo a TV permanece apagada (não há regra para os dias 5 e 6).
+- Uma TV pode ter **várias regras para o mesmo dia** (ex.: pausa no almoço — liga 06:50, desliga 12:00, liga 13:00, desliga 17:55).
+- `days` vazio (`[]`) significa **todos os dias**.
+- Horários de `off` antes de `on` cruzam a meia-noite (funcionamento noturno).
+
+**Compatibilidade:** o formato antigo `schedule_on` / `schedule_off` segue funcionando e vale para todos os dias. O sistema usa `schedules` quando presente; caso contrário, cai no formato legado. TVs sem nenhum horário configurado ficam sempre ativas (gerenciadas apenas pelo watchdog).
 
 ---
 
@@ -105,7 +151,7 @@ Para instalação nova, instale o app em `kiosk-roku/` nas TVs Roku habilitando 
 
 - [ ] Módulo MQTT para dispositivos IoT
 - [ ] Módulo ONVIF para câmeras/monitores
-- [ ] Dashboard web de gerenciamento (além do kiosk)
+- [x] Dashboard web de gerenciamento (painel.html + rota `/api/roku/painel`)
 - [ ] Alertas e notificações (webhook, e-mail)
 - [ ] Histórico de eventos e logs
 - [ ] Suporte a múltiplos protocols em paralelo
