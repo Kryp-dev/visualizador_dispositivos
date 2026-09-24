@@ -1,21 +1,18 @@
 /**
- * kiosk-webos/config.js - URL do visualizador que o kiosk abre.
+ * kiosk-webos/config.js - Configuracao do kiosk PBR para TVs LG webOS.
  *
- * A primeira vez, o servidor abre o app passando a URL via launch params
- * (quando o campo "App kiosk nativo" do painel aponta para este app).
- * Se isso nao funcionar na sua TV, defina a URL manualmente aqui:
+ * A URL do visualizador e sempre passada pelo servidor via launch params
+ * (PalmSystem.launchParams). Nao ha fallback intencional: se o app abrir
+ * sem parametro do servidor, a tela de erro sera exibida.
+ *
+ * Para testes manuais sem o servidor, defina a URL aqui:
  *
  *   window.KIOSK_CONFIG = {
  *     url: "http://IP_DO_SERVIDOR:8080/api/roku/visualizador",
- *     reloadSec: 60,
- *     reloadOnlyVisible: true,
- *     showDebug: false,
- *     pingUrl: null,
- *     pingSecs: 30
  *   };
  */
 window.KIOSK_CONFIG = {
-  url: "https://seibtcomercial.github.io/VELOCIMETRO_SEIBT_-/",
+  url: "",          // vazio = obrigatorio vir via launch params do servidor
   reloadSec: 60,
   reloadOnlyVisible: true,
   showDebug: false,
