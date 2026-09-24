@@ -1,12 +1,12 @@
 # Módulo Visualizador de Dispositivos
 
-Plataforma modular de gerenciamento e automação de dispositivos de rede. Atualmente suporta **TVs Roku** via ECP (External Control Protocol), com arquitetura preparada para expansão para outros protocolos e tipos de dispositivos (smart TVs, monitores, IoT, etc).
+Plataforma modular de gerenciamento e automação de dispositivos de rede. Atualmente suporta **TVs Roku** via ECP (External Control Protocol) e **TVs LG webOS** via protocolo nativo (SSAP), com arquitetura preparada para expansão para outros protocolos e tipos de dispositivos (smart TVs, monitores, IoT, etc).
 
 ---
 
 ## Visão Geral
 
-O sistema foi projetado com uma arquitetura **plugin-friendly**: cada tipo de dispositivo tem seu próprio módulo de controle, compartilhando uma base comum de configuração, CRUDe visualização. O primeiro módulo implementado é o **Roku ECP**, que cobre:
+O sistema foi projetado com uma arquitetura **plugin-friendly**: cada tipo de dispositivo tem seu próprio módulo de controle, compartilhando uma base comum de configuração, CRUD e visualização. Os módulos atuais incluem **Roku ECP** e **LG webOS**, que cobrem:
 
 - Cadastro e gerenciamento de múltiplas TVs via API REST
 - Descoberta automática via SSDP
@@ -23,15 +23,19 @@ O sistema foi projetado com uma arquitetura **plugin-friendly**: cada tipo de di
 visualizador_dispositivos/
 ├── __init__.py                  # Pacote Python
 ├── roku_ecp.py                  # Módulo Roku ECP (controlador + watchdog + scheduler)
+├── webos_driver.py              # Módulo LG webOS (controlador + watchdog + scheduler)
 ├── painel.html                  # Página de gerenciamento (admin) das TVs
 ├── tvs_config.example.json      # Exemplo do banco de configuração das TVs
 ├── visualizador.example.html    # Exemplo da página HTML exibida nas TVs
 ├── kiosk-roku/                  # App BrightScript nativo para TVs Roku
-│   ├── source/main.brs
-│   ├── components/MainScene.xml
-│   ├── components/MainScene.brs
-│   ├── images/icon.png
-│   └── manifest
+├── kiosk-webos/                 # App nativo HTML/JS para TVs LG webOS
+│   ├── appinfo.json
+│   ├── index.html
+│   ├── config.js
+│   ├── icon.png
+│   ├── largeIcon.png
+│   ├── bgImage.png
+│   └── package.bat              # Script para gerar o IPK de instalação
 ├── LICENSE                      # GPLv3
 └── README.md
 ```
@@ -45,6 +49,7 @@ visualizador_dispositivos/
 | Protocolo | Tipo de Dispositivo | Status |
 |---|---|---|
 | **Roku ECP** (HTTP) | TVs Roku | Implementado |
+| **LG webOS** (SSAP/WSS) | TVs LG Smart | Implementado |
 | **MQTT** | Dispositivos IoT / domótica | Planejado |
 | **ONVIF** | Câmeras / monitores IP | Planejado |
 | **HTTP/REST genérico** | Qualquer device com API | Planejado |
