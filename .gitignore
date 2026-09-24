@@ -6,6 +6,9 @@
 tvs_config.json
 visualizador.html
 
+# Chaves de pareamento das TVs (LG webOS)
+keys/
+
 # Cache do Python
 __pycache__/
 *.pyc

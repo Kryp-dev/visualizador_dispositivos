@@ -24,7 +24,6 @@ Endpoints FastAPI:
 """
 
 import asyncio
-import json
 import os
 import re
 import socket
@@ -35,12 +34,11 @@ import logging
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Union
+from typing import Optional
 
 import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
 logger = logging.getLogger("roku_ecp")
 
@@ -54,58 +52,33 @@ ROKU_ECP_PORT: int = 8060
 # Quando vazia, o app usa o valor de "snapshot_url" do manifest da app.
 _DEFAULT_SNAPSHOT_URL: str = os.getenv("ROKU_SNAPSHOT_URL", "")
 
-_LAUNCH_COOLDOWN_SECONDS: int = 60
-_RETRY_MAX_ATTEMPTS: int = 5
-_RETRY_INTERVAL_SECONDS: int = 10
-_POLL_INTERVAL_SECONDS: int = 5
-
-_SSDP_MULTICAST_IP = "239.255.255.250"
-_SSDP_PORT = 1900
-
-# ---------------------------------------------------------------------------
-# Banco de dados (tvs_config.json)
-# ---------------------------------------------------------------------------
 _BASE_DIR = Path(__file__).parent
-_TVS_FILE = _BASE_DIR / "tvs_config.json"
 
-_tv_state: Dict[str, dict] = {}
-
-
-def _load_tvs() -> List[dict]:
-    try:
-        if _TVS_FILE.exists():
-            return json.loads(_TVS_FILE.read_text(encoding="utf-8"))
-    except Exception as e:
-        logger.error(f"[ROKU] Erro ao carregar tvs_config.json: {e}")
-    return []
-
-
-def _save_tvs(tvs: List[dict]):
-    try:
-        _TVS_FILE.write_text(json.dumps(tvs, ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception as e:
-        logger.error(f"[ROKU] Erro ao salvar tvs_config.json: {e}")
-
-
-def _get_tv(tv_id: str) -> Optional[dict]:
-    tvs = _load_tvs()
-    return next((t for t in tvs if t["id"] == tv_id), None)
-
-
-def _init_state(tv: dict):
-    tid = tv["id"]
-    if tid not in _tv_state:
-        _tv_state[tid] = {
-            "last_launch_time": 0.0,
-            "launch_in_progress": False,
-            "was_online": None,
-            "watchdog_status": {
-                "last_check": None,
-                "active_app_id": None,
-                "our_app_active": None,
-                "tv_online": None,
-            },
-        }
+# Nucleo compartilhado do Visualizador de Dispositivos (base.py): persistencia
+# no tvs_config.json, agenda, models de cadastro (com campo "tipo") e
+# constantes. O comportamento deste arquivo permanece identico; as operacoes
+# ECP sao expostas pela interface TvDriver (drivers.py) via RokuDriver.
+from .base import (
+    _tv_state,
+    _LAUNCH_COOLDOWN_SECONDS,
+    _RETRY_MAX_ATTEMPTS,
+    _RETRY_INTERVAL_SECONDS,
+    _POLL_INTERVAL_SECONDS,
+    _SSDP_MULTICAST_IP,
+    _SSDP_PORT,
+)
+from .base import load_tvs as _load_tvs, save_tvs as _save_tvs, get_tv as _get_tv, init_state as _init_state
+from .base import tv_tipo
+from .base import (
+    _normalize_days,
+    _has_any_schedule,
+    _rule_active_today,
+    _today_schedule_rules,
+    _rule_in_interval,
+    _is_within_schedule,
+)
+from .base import ScheduleRule, TVCreate, TVUpdate
+from .drivers import register_driver
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +204,49 @@ async def _roku_active_app(ip: str) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
+# RokuDriver - expoe as operacoes ECP pela interface TvDriver (drivers.py)
+# ---------------------------------------------------------------------------
+
+class RokuDriver:
+    brand = "roku"
+
+    async def is_online(self, ip: str) -> bool:
+        return await _roku_is_online(ip)
+
+    async def is_reachable(self, ip: str) -> bool:
+        return await _roku_is_reachable(ip)
+
+    async def device_info(self, ip: str) -> Optional[dict]:
+        return await _roku_device_info(ip)
+
+    async def set_power(self, tv: dict, on: bool) -> bool:
+        return await _roku_power(tv["ip"], "PowerOn" if on else "PowerOff")
+
+    async def launch(self, tv: dict) -> bool:
+        return await _roku_launch(
+            tv["ip"],
+            tv.get("channel_id", ""),
+            snapshot_url=_tv_snapshot_url(tv),
+        )
+
+    async def query_apps(self, ip: str) -> Optional[list]:
+        return await _roku_query_apps(ip)
+
+    async def active_app(self, ip: str) -> Optional[str]:
+        return await _roku_active_app(ip)
+
+    def watchdog_target_app(self, tv: dict) -> Optional[str]:
+        return tv.get("channel_id", "")
+
+    def match_ssdp(self, message: str) -> bool:
+        return "roku" in message or "dial" in message or "ssdp:alive" in message
+
+
+# Registra o driver Roku no nucleo compartilhado (base.py)
+register_driver(RokuDriver())
+
+
+# ---------------------------------------------------------------------------
 # Launch com retry por TV
 # ---------------------------------------------------------------------------
 
@@ -270,106 +286,9 @@ async def _launch_with_retry(tv: dict, source: str):
 # Agenda por dia da semana
 # ---------------------------------------------------------------------------
 
-# Dias da semana usados em "schedules" (mesmo padrao de datetime.weekday):
-#   0=segunda, 1=terca, 2=quarta, 3=quinta, 4=sexta, 5=sabado, 6=domingo
-# Nomes em portugues/ingles tambem sao aceitos no JSON.
-_WEEKDAY_PT = {
-    "segunda": 0, "segunda-feira": 0, "segundas": 0,
-    "terca": 1, "terca-feira": 1, "tercas": 1,
-    "quarta": 2, "quarta-feira": 2, "quartas": 2,
-    "quinta": 3, "quinta-feira": 3, "quintas": 3,
-    "sexta": 4, "sexta-feira": 4, "sextas": 4,
-    "sabado": 5, "sábado": 5, "sabados": 5,
-    "domingo": 6, "domingos": 6,
-}
-_WEEKDAY_EN = {
-    "mon": 0, "monday": 0, "tue": 1, "tuesday": 1, "wed": 2,
-    "wednesday": 2, "thu": 3, "thur": 3, "thurs": 3, "thursday": 3,
-    "fri": 4, "friday": 4, "sat": 5, "saturday": 5, "sun": 6, "sunday": 6,
-}
-
-
-def _normalize_days(days) -> List[int]:
-    """Converte a lista de dias de uma regra para numeros 0-6. Vazio = todos os dias."""
-    if not days:
-        return []
-    result: List[int] = []
-    seen = set()
-    for d in days:
-        if isinstance(d, bool):
-            continue
-        if isinstance(d, int):
-            num = d % 7
-        else:
-            s = str(d).strip().lower()
-            if s in _WEEKDAY_PT:
-                num = _WEEKDAY_PT[s]
-            elif s in _WEEKDAY_EN:
-                num = _WEEKDAY_EN[s]
-            else:
-                continue
-        if num not in seen:
-            seen.add(num)
-            result.append(num)
-    return result
-
-
-def _has_any_schedule(tv: dict) -> bool:
-    """True se a TV possui qualquer configuracao de horario (nova ou legada)."""
-    if tv.get("schedules"):
-        return True
-    return bool(tv.get("schedule_on") or tv.get("schedule_off"))
-
-
-def _rule_active_today(rule: dict, today: int) -> bool:
-    days = _normalize_days(rule.get("days"))
-    if not days:
-        return True  # dias vazios = todos os dias
-    return today in days
-
-
-def _today_schedule_rules(tv: dict) -> Optional[List[dict]]:
-    """Retorna as regras de horario ativas hoje.
-
-    - None             -> a TV nao tem agenda configurada (fica sempre ativa)
-    - lista vazia      -> tem agenda, mas hoje nao ha regra (dia desligado)
-    - lista com regras -> regras que valem para o dia atual (podem ser varias)
-    """
-    schedules = tv.get("schedules")
-    if schedules:
-        today = datetime.now().weekday()
-        return [r for r in schedules if _rule_active_today(r, today)]
-    on_time = tv.get("schedule_on", "")
-    off_time = tv.get("schedule_off", "")
-    if on_time or off_time:
-        return [{"days": [], "on": on_time, "off": off_time}]
-    return None
-
-
-def _rule_in_interval(on_time: str, off_time: str, now) -> bool:
-    try:
-        t_on = datetime.strptime(on_time, "%H:%M").time()
-        t_off = datetime.strptime(off_time, "%H:%M").time()
-    except Exception:
-        return False
-    if t_on < t_off:
-        return t_on <= now <= t_off
-    return now >= t_on or now <= t_off  # cruza a meia noite
-
-
-def _is_within_schedule(tv: dict) -> bool:
-    """True se o horario atual estiver dentro do periodo de funcionamento da TV
-    para o dia de hoje (considera agenda por dia da semana). Sem agenda, True."""
-    if not _has_any_schedule(tv):
-        return True
-    rules = _today_schedule_rules(tv) or []
-    if not rules:
-        return False
-    now = datetime.now().time()
-    for rule in rules:
-        if _rule_in_interval(rule.get("on", ""), rule.get("off", ""), now):
-            return True
-    return False
+# (logica movida para base.py: _normalize_days, _has_any_schedule,
+#  _rule_active_today, _today_schedule_rules, _rule_in_interval,
+#  _is_within_schedule - compartilhada com as demais marcas)
 
 
 async def _trigger_launch_if_ready(tv: dict, source: str = "auto"):
@@ -470,7 +389,7 @@ async def _scheduler():
         now = datetime.now()
         now_str = now.strftime("%H:%M")
         today_key = now.strftime("%Y-%m-%d")
-        tvs = _load_tvs()
+        tvs = [t for t in _load_tvs() if tv_tipo(t) == "roku"]
 
         for tv in tvs:
             if not tv.get("enabled"):
@@ -633,7 +552,7 @@ async def _ssdp_listener():
                 continue
             tvs = _load_tvs()
             for tv in tvs:
-                if tv["ip"] == sender_ip and tv.get("enabled"):
+                if tv["ip"] == sender_ip and tv.get("enabled") and tv_tipo(tv) == "roku":
                     _init_state(tv)
                     logger.info(f"[ROKU SSDP] Anuncio de {sender_ip} -> [{tv['nome']}]. Disparando launch...")
                     await _trigger_launch_if_ready(tv, source="SSDP")
@@ -648,10 +567,10 @@ async def _ssdp_listener():
 # ---------------------------------------------------------------------------
 
 async def start_roku_watcher():
-    """Inicia todos os watchers. Chamado no lifespan do FastAPI."""
-    tvs = _load_tvs()
+    """Inicia todos os watchers Roku. Chamado no lifespan do FastAPI."""
+    tvs = [t for t in _load_tvs() if tv_tipo(t) == "roku"]
     if not tvs:
-        logger.info("[ROKU ECP] Nenhuma TV cadastrada em tvs_config.json.")
+        logger.info("[ROKU ECP] Nenhuma TV Roku cadastrada em tvs_config.json.")
 
     logger.info(f"[ROKU ECP] Iniciando watchers para {len(tvs)} TV(s).")
 
@@ -672,37 +591,15 @@ async def start_roku_watcher():
 
 
 # ---------------------------------------------------------------------------
-# Pydantic Models
+# Pydantic Models (compartilhados - definidos em base.py)
 # ---------------------------------------------------------------------------
 
-class ScheduleRule(BaseModel):
-    days: List[Union[int, str]] = []
-    on: str = ""
-    off: str = ""
-
-
-class TVCreate(BaseModel):
-    nome: str
-    ip: str
-    channel_id: str = ""
-    watchdog: bool = True
-    schedule_on: str = ""
-    schedule_off: str = ""
-    schedules: List[ScheduleRule] = []
-    image_url: str = ""
-    enabled: bool = True
-
-
-class TVUpdate(BaseModel):
-    nome: Optional[str] = None
-    ip: Optional[str] = None
-    channel_id: Optional[str] = None
-    watchdog: Optional[bool] = None
-    schedule_on: Optional[str] = None
-    schedule_off: Optional[str] = None
-    schedules: Optional[List[ScheduleRule]] = None
-    image_url: Optional[str] = None
-    enabled: Optional[bool] = None
+def _roku_tv_or_404(tv_id: str) -> dict:
+    """Busca uma TV garantindo que ela seja do tipo Roku."""
+    tv = _roku_tv_or_404(tv_id)
+    if tv_tipo(tv) != "roku":
+        raise HTTPException(status_code=404, detail="TV nao encontrada (marca diferente)")
+    return tv
 
 
 # ---------------------------------------------------------------------------
@@ -714,8 +611,8 @@ roku_router = APIRouter(prefix="/api/roku", tags=["Roku ECP"])
 
 @roku_router.get("/tvs")
 async def api_list_tvs():
-    """Lista todas as TVs cadastradas com status atual."""
-    tvs = _load_tvs()
+    """Lista todas as TVs Roku cadastradas com status atual."""
+    tvs = [t for t in _load_tvs() if tv_tipo(t) == "roku"]
     result = []
     for tv in tvs:
         _init_state(tv)
@@ -740,9 +637,11 @@ async def api_list_tvs():
 
 @roku_router.post("/tvs", status_code=201)
 async def api_add_tv(body: TVCreate):
-    """Cadastra uma nova TV."""
+    """Cadastra uma nova TV (sempre do tipo Roku neste endpoint)."""
     tvs = _load_tvs()
-    new_tv = {"id": str(uuid.uuid4())[:8], **body.model_dump()}
+    data = body.model_dump()
+    data["tipo"] = "roku"
+    new_tv = {"id": str(uuid.uuid4())[:8], **data}
     tvs.append(new_tv)
     _save_tvs(tvs)
     _init_state(new_tv)
@@ -760,6 +659,7 @@ async def api_update_tv(tv_id: str, body: TVUpdate):
     if idx is None:
         raise HTTPException(status_code=404, detail="TV nao encontrada")
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    updates.pop("tipo", None)  # o tipo nao muda via endpoint Roku
     tvs[idx].update(updates)
     _save_tvs(tvs)
     return tvs[idx]
@@ -780,9 +680,7 @@ async def api_delete_tv(tv_id: str):
 @roku_router.post("/tvs/{tv_id}/launch")
 async def api_launch(tv_id: str):
     """Lanca o app da TV manualmente (ignora cooldown)."""
-    tv = _get_tv(tv_id)
-    if not tv:
-        raise HTTPException(status_code=404, detail="TV nao encontrada")
+    tv = _roku_tv_or_404(tv_id)
     _init_state(tv)
     _tv_state[tv_id]["last_launch_time"] = 0
     online = await _roku_is_online(tv["ip"])
@@ -797,9 +695,7 @@ async def api_launch(tv_id: str):
 @roku_router.post("/tvs/{tv_id}/power-on")
 async def api_power_on(tv_id: str):
     """Liga a tela da TV via ECP PowerOn."""
-    tv = _get_tv(tv_id)
-    if not tv:
-        raise HTTPException(status_code=404, detail="TV nao encontrada")
+    tv = _roku_tv_or_404(tv_id)
     ok = await _roku_power(tv["ip"], "PowerOn")
     return {"ok": ok, "nome": tv["nome"], "ip": tv["ip"], "action": "PowerOn"}
 
@@ -807,9 +703,7 @@ async def api_power_on(tv_id: str):
 @roku_router.post("/tvs/{tv_id}/power-off")
 async def api_power_off(tv_id: str):
     """Desliga a tela da TV via ECP PowerOff."""
-    tv = _get_tv(tv_id)
-    if not tv:
-        raise HTTPException(status_code=404, detail="TV nao encontrada")
+    tv = _roku_tv_or_404(tv_id)
     ok = await _roku_power(tv["ip"], "PowerOff")
     return {"ok": ok, "nome": tv["nome"], "ip": tv["ip"], "action": "PowerOff"}
 
@@ -817,9 +711,7 @@ async def api_power_off(tv_id: str):
 @roku_router.get("/tvs/{tv_id}/status")
 async def api_tv_status(tv_id: str):
     """Status completo de uma TV."""
-    tv = _get_tv(tv_id)
-    if not tv:
-        raise HTTPException(status_code=404, detail="TV nao encontrada")
+    tv = _roku_tv_or_404(tv_id)
     _init_state(tv)
     state = _tv_state.get(tv_id, {})
     online = await _roku_is_online(tv["ip"])
@@ -842,9 +734,7 @@ async def api_tv_status(tv_id: str):
 @roku_router.get("/tvs/{tv_id}/apps")
 async def api_tv_apps(tv_id: str):
     """Lista apps instalados na TV."""
-    tv = _get_tv(tv_id)
-    if not tv:
-        raise HTTPException(status_code=404, detail="TV nao encontrada")
+    tv = _roku_tv_or_404(tv_id)
     reachable = await _roku_is_reachable(tv["ip"])
     if not reachable:
         return JSONResponse(status_code=503, content={
@@ -855,7 +745,19 @@ async def api_tv_apps(tv_id: str):
 
 @roku_router.get("/visualizador")
 async def get_visualizador():
-    """Retorna a página do visualizador de dispositivos."""
+    """Wrapper kiosk exibido nas TVs (Roku e LG).
+
+    Retorna o visualizador.html que:
+      - Lê o parâmetro ?url= (URL do painel a exibir no iframe)
+      - Fallback para webOS launchParams
+      - Fallback para URL padrão (velocímetro GitHub Pages)
+      - Mantém tela acesa (Wake Lock API + fallback canvas/video)
+      - Solicita fullscreen automaticamente
+
+    Para exibir um painel diferente em uma TV específica, configure o campo
+    ``image_url`` no cadastro da TV. O backend passará o valor como ?url= ao
+    abrir o visualizador naquela TV.
+    """
     from fastapi.responses import FileResponse
     path = _BASE_DIR / "visualizador.html"
     if not path.exists():

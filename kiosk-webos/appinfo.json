@@ -1,0 +1,21 @@
+{
+  "id": "com.kd.kiosk",
+  "version": "1.0.0",
+  "vendor": "KD",
+  "type": "web",
+  "main": "index.html",
+  "title": "PBR",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "bgImage": "bgImage.png",
+  "bgColor": "#000000",
+  "transparent": false,
+  "appDescription": "Visualizador de relatorios operacionais PBR.",
+  "requiredPermissions": [
+    "LAUNCH",
+    "FOREGROUND",
+    "NETWORK"
+  ],
+  "graphicsType": "GL",
+  "resolution": "auto"
+}

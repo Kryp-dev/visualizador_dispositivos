@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gerenciador de TVs Roku</title>
+  <title>Painel de TVs</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
@@ -22,6 +22,8 @@
       --green:     #22c55e;
       --yellow:    #f59e0b;
       --red:       #ef4444;
+      --roku:      #6f2da8;
+      --webos:     #a50034;
       --radius:    14px;
       --radius-sm: 8px;
     }
@@ -34,7 +36,7 @@
     header {
       display: flex; align-items: center; justify-content: space-between;
       padding: 18px 28px; border-bottom: 1px solid var(--border);
-      background: var(--surface); flex-shrink: 0;
+      background: var(--surface); flex-shrink: 0; gap: 16px;
     }
     .logo { display: flex; align-items: center; gap: 12px; }
     .logo-icon {
@@ -46,6 +48,16 @@
     .logo-text { font-size: 18px; font-weight: 700; }
     .logo-text span { color: var(--accent); }
 
+    .header-right { display: flex; align-items: center; gap: 14px; }
+
+    #filtro-tipo {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 10px 14px;
+      color: var(--text); font-size: 13px; font-weight: 600; font-family: inherit;
+      cursor: pointer;
+    }
+    #filtro-tipo:focus { outline: none; border-color: var(--accent); }
+
     #btn-add {
       display: flex; align-items: center; gap: 8px;
       background: var(--accent); color: #fff; border: none;
@@ -54,6 +66,15 @@
       transition: background 0.2s, transform 0.15s;
     }
     #btn-add:hover { background: var(--accent2); transform: translateY(-1px); }
+
+    #btn-detect {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+      padding: 10px 16px; border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: all 0.2s;
+    }
+    #btn-detect:hover { border-color: var(--accent); color: var(--accent); }
 
     main { flex: 1; overflow-y: auto; padding: 28px; }
 
@@ -106,6 +127,15 @@
     .tv-badge.off { background: rgba(239,68,68,0.12);  color: var(--red); }
     .tv-badge.standby { background: rgba(245,158,11,0.12); color: var(--yellow); }
 
+    .tipo-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+      padding: 3px 9px; border-radius: 20px; text-transform: uppercase;
+      margin-left: 6px; vertical-align: middle; border: 1px solid; flex-shrink: 0;
+    }
+    .tipo-roku  { background: rgba(111,45,168,0.18);  color: #c98bff; border-color: rgba(201,139,255,0.35); }
+    .tipo-webos { background: rgba(165,0,52,0.18);   color: #ff8fb0; border-color: rgba(255,143,176,0.35); }
+
     .tv-card-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
 
     .info-row {
@@ -143,10 +173,12 @@
     .btn-power-on  { background: rgba(34,197,94,0.12);  color: var(--green);  border-color: rgba(34,197,94,0.25); }
     .btn-power-off { background: rgba(239,68,68,0.10);  color: var(--red);    border-color: rgba(239,68,68,0.2); }
     .btn-launch    { background: rgba(108,99,255,0.15); color: var(--accent); border-color: rgba(108,99,255,0.3); }
+    .btn-pair      { background: rgba(255,159,28,0.10); color: #f5a623;       border-color: rgba(255,159,28,0.3); }
     .btn-edit      { background: rgba(255,255,255,0.05); color: var(--muted); border-color: var(--border); }
     .btn-delete    { background: rgba(239,68,68,0.08);  color: var(--red);    border-color: rgba(239,68,68,0.15); }
     .btn:hover { filter: brightness(1.2); }
     .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn.hidden { display: none; }
 
     /* Empty state */
     #empty-state {
@@ -155,7 +187,7 @@
     }
     #empty-state .icon { font-size: 56px; }
     #empty-state h2 { font-size: 20px; font-weight: 700; }
-    #empty-state p  { font-size: 14px; color: var(--muted); max-width: 320px; line-height: 1.6; }
+    #empty-state p  { font-size: 14px; color: var(--muted); max-width: 400px; line-height: 1.6; }
 
     /* Loading */
     .loading-msg {
@@ -194,9 +226,18 @@
     .field input:focus, .field select:focus {
       outline: none; border-color: var(--accent);
     }
+    .field select option { background: var(--surface2); }
+
+    .field[data-tipo-vis] { display: block; }
+    .field[data-tipo-vis="roku"] { display: none; }
+    .field[data-tipo-vis="webos"] { display: none; }
+    .field.vis[data-tipo-vis="roku"] { display: block; }
+    .field.vis[data-tipo-vis="webos"] { display: block; }
 
     .field-row { display: flex; gap: 12px; }
     .field-row .field { flex: 1; margin-bottom: 0; }
+
+    .hint { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
 
     .toggle-row {
       display: flex; align-items: center; justify-content: space-between;
@@ -291,12 +332,22 @@
     <div class="logo">
       <div class="logo-icon">📺</div>
       <div>
-        <div class="logo-text">Roku <span>TV Manager</span></div>
+        <div class="logo-text">Painel <span>de TVs</span></div>
       </div>
     </div>
-    <button id="btn-add" onclick="openModal()">
-      <span>＋</span> Adicionar TV
-    </button>
+    <div class="header-right">
+      <select id="filtro-tipo" onchange="renderFiltered()" title="Filtrar por sistema">
+        <option value="">Todos os sistemas</option>
+        <option value="roku">Roku</option>
+        <option value="webos">LG webOS</option>
+      </select>
+      <button id="btn-detect" onclick="detectTVs(this)" title="Procurar TVs na rede">
+        <span>🔍</span> Detectar
+      </button>
+      <button id="btn-add" onclick="openModal()">
+        <span>＋</span> Adicionar TV
+      </button>
+    </div>
   </header>
 
   <main>
@@ -304,7 +355,7 @@
     <div id="empty-state">
       <div class="icon">📺</div>
       <h2>Nenhuma TV cadastrada</h2>
-      <p>Clique em "Adicionar TV" para cadastrar sua primeira TV Roku e configurar o app e os horários de ligar/desligar.</p>
+      <p>Clique em "Adicionar TV" para cadastrar sua primeira TV (Roku ou LG webOS) e configurar o app/kiosk e os horários de ligar/desligar.</p>
     </div>
     <div id="tv-grid"></div>
   </main>
@@ -313,23 +364,47 @@
 <!-- Modal Cadastro/Edição -->
 <div id="modal-overlay" onclick="if(event.target===this)closeModal()">
   <div id="modal">
-    <h2 id="modal-title">Adicionar TV Roku</h2>
+    <h2 id="modal-title">Adicionar TV</h2>
 
     <div class="field">
       <label>Nome da TV</label>
       <input id="f-nome" type="text" placeholder="Ex: TV Recepção">
     </div>
-    <div class="field">
-      <label>Endereço IP</label>
-      <input id="f-ip" type="text" placeholder="Ex: 192.168.0.100">
+    <div class="field-row">
+      <div class="field">
+        <label>Sistema</label>
+        <select id="f-tipo" onchange="onTipoChange()">
+          <option value="roku">Roku</option>
+          <option value="webos">LG webOS</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Endereço IP</label>
+        <input id="f-ip" type="text" placeholder="Ex: 192.168.0.100">
+      </div>
     </div>
-    <div class="field" style="position:relative">
+
+    <div class="field vis" data-tipo-vis="roku">
       <label>Channel ID do App <span id="btn-buscar-apps" style="margin-left:8px; color:var(--accent); cursor:pointer; font-size:11px;">(buscar apps na TV →)</span></label>
       <input id="f-channel" type="text" placeholder="Ex: 880042">
     </div>
+
+    <div class="field vis" data-tipo-vis="webos">
+      <label>MAC da TV (Wake-on-LAN)</label>
+      <input id="f-mac" type="text" placeholder="Ex: 00:1E:C0:AA:BB:CC">
+      <div class="hint">Obrigatório para "Ligar" por rede. Ative "Início rápido / Sempre pronto" na TV.</div>
+    </div>
+
+    <div class="field vis" data-tipo-vis="webos">
+      <label>App kiosk nativo (opcional)</label>
+      <input id="f-kiosk-app" type="text" placeholder="Ex: com.enterposto.kiosk">
+      <div class="hint">Se preenchido, o watchdog/launch abre este app instalado (kiosk-webos); vazio = navegador nativo.</div>
+    </div>
+
     <div class="field">
-      <label>URL da imagem (snapshot) <span style="font-weight:400;color:var(--muted)">— opcional, injetada via ECP</span></label>
-      <input id="f-image" type="text" placeholder="Ex: http://servidor:8080/api/snapshot.png">
+      <label id="f-image-label">URL do kiosk <span style="font-weight:400;color:var(--muted)">— opcional</span></label>
+      <input id="f-image" type="text" placeholder="Ex: http://servidor:8080/api/roku/visualizador">
+      <div class="hint">Roku: snapshot injetada via ECP. LG: página aberta no navegador da TV.</div>
     </div>
 
     <div class="field">
@@ -360,6 +435,17 @@
   </div>
 </div>
 
+<!-- Modal Detectar -->
+<div id="modal-detect-overlay" onclick="if(event.target===this)closeDetect()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px);z-index:1001;align-items:center;justify-content:center;">
+  <div id="modal-detect" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:100%;max-width:560px;padding:24px;max-height:86vh;overflow-y:auto;">
+    <h2 style="font-size:16px;font-weight:700;margin-bottom:4px;">TVs na rede</h2>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Apenas TVs ainda não cadastradas são listadas. Clique em "Adicionar" para pré-cadastrar.</p>
+    <div id="detect-list"></div>
+    <button class="btn-cancel" style="width:100%;margin-top:16px;" onclick="closeDetect()">Fechar</button>
+  </div>
+</div>
+
 <!-- Modal Apps -->
 <div id="modal-apps-overlay" onclick="if(event.target===this)document.getElementById('modal-apps-overlay').classList.remove('open')"
      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px);z-index:1001;align-items:center;justify-content:center;">
@@ -375,7 +461,8 @@
 <div id="toast"></div>
 
 <script>
-const API = '/api/roku/tvs';
+const API = '/api/dispositivos';
+let _allTvs = [];
 let _editId = null;
 let _refreshTimer = null;
 
@@ -384,6 +471,7 @@ document.addEventListener('DOMContentLoaded', () => {
   refresh();
   startAutoRefresh();
   buildWeeklyRows();
+  onTipoChange();
   document.getElementById('btn-buscar-apps').addEventListener('click', fetchAppsForModal);
 });
 
@@ -395,11 +483,19 @@ function startAutoRefresh() {
 // ── Busca TVs e Renderiza ───────────────────────────────────────────────
 async function refresh() {
   try {
-    const tvs = await apiFetch(API);
-    render(tvs);
+    _allTvs = await apiFetch(API);
+    renderFiltered();
   } catch(e) {
     console.error(e);
   }
+}
+
+function currentFilter() {
+  return document.getElementById('filtro-tipo').value || '';
+}
+
+function renderFiltered() {
+  render(_allTvs.filter(t => !currentFilter() || (t.tipo === currentFilter())));
 }
 
 function render(tvs) {
@@ -423,9 +519,19 @@ function tvCard(tv) {
   const badgeLabel = online ? 'Online' : (tv.device_info ? 'Standby' : 'Offline');
   const badgeCls   = online ? 'on'    : (tv.device_info ? 'standby' : 'off');
   const model = tv.device_info?.model_name || tv.device_info?.friendly_name || '—';
+  const tipo = tv.tipo === 'webos' ? 'webos' : 'roku';
+  const tipoLabel = tipo === 'webos' ? 'LG' : 'Roku';
+
+  const subInfo = tipo === 'webos'
+    ? `${esc(tv.ip)} · ${tv.mac ? 'MAC ' + esc(tv.mac) : 'sem MAC'}`
+    : `${esc(tv.ip)} · Channel ${esc(tv.channel_id || '—')}`;
+
+  const pairBtn = tipo === 'webos'
+    ? `<button class="btn btn-pair" onclick="pairTV('${tv.id}', this)" title="Parear com a LG">🔗 Parear</button>`
+    : '';
 
   const activeApp = tv.active_app_id
-    ? `<span class="active-app-chip">▶ App ${tv.active_app_id}</span>`
+    ? `<span class="active-app-chip">▶ ${tipo === 'webos' ? 'App' : 'App'} ${esc(tv.active_app_id)}</span>`
     : `<span style="font-size:12px;color:var(--muted)">—</span>`;
 
   return `
@@ -434,8 +540,8 @@ function tvCard(tv) {
       <div class="tv-name-row">
         <div class="status-dot ${dotCls}"></div>
         <div>
-          <div class="tv-name">${esc(tv.nome)}</div>
-          <div class="tv-ip">${esc(tv.ip)} · Channel ${esc(tv.channel_id || '—')}</div>
+          <div class="tv-name">${esc(tv.nome)}<span class="tipo-badge tipo-${tipo}">${tipoLabel}</span></div>
+          <div class="tv-ip">${subInfo}</div>
         </div>
       </div>
       <span class="tv-badge ${badgeCls}">${badgeLabel}</span>
@@ -464,7 +570,8 @@ function tvCard(tv) {
     <div class="tv-actions">
       <button class="btn btn-power-on"  onclick="powerOn('${tv.id}', this)"  title="Ligar Tela">⏻ Ligar</button>
       <button class="btn btn-power-off" onclick="powerOff('${tv.id}', this)" title="Desligar Tela">⏼ Desligar</button>
-      <button class="btn btn-launch"    onclick="launchApp('${tv.id}', this)" title="Abrir App">▶ App</button>
+      <button class="btn btn-launch"    onclick="launchApp('${tv.id}', this)" title="Abrir App/Kiosk">▶ App</button>
+      ${pairBtn}
       <button class="btn btn-edit"      onclick='editTV(${JSON.stringify(tv)})' title="Editar">✎</button>
       <button class="btn btn-delete"    onclick="deleteTV('${tv.id}', '${esc(tv.nome)}')" title="Remover">✕</button>
     </div>
@@ -480,6 +587,9 @@ async function powerOff(id, btn) {
 }
 async function launchApp(id, btn) {
   await sendAction(`${API}/${id}/launch`, btn, '▶ App', 'Abrindo app...');
+}
+async function pairTV(id, btn) {
+  await sendAction(`${API}/${id}/pair`, btn, '🔗 Parear', 'Pareando...');
 }
 
 async function sendAction(url, btn, originalLabel, feedbackLabel) {
@@ -512,18 +622,92 @@ async function deleteTV(id, nome) {
   }
 }
 
+// ── Detectar TVs na rede ───────────────────────────────────────────────
+async function detectTVs(btn) {
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spin">⟳</span> Procurando...`;
+  const list = document.getElementById('detect-list');
+  list.innerHTML = '<div class="loading-msg">Varrendo a rede (SSDP)...</div>';
+  document.getElementById('modal-detect-overlay').style.display = 'flex';
+  try {
+    const found = await apiFetch(`${API}/discover`);
+    renderDetect(found);
+  } catch(e) {
+    list.innerHTML = '<div style="color:var(--red);padding:20px;text-align:center;">Erro na varredura.</div>';
+  }
+  btn.disabled = false;
+  btn.innerHTML = original;
+}
+
+function renderDetect(items) {
+  const list = document.getElementById('detect-list');
+  if (!items || items.length === 0) {
+    list.innerHTML = `
+      <div style="text-align:center;padding:30px 10px;color:var(--muted);font-size:13px;">
+        Nenhuma TV encontrada via SSDP.<br>
+        Verifique se as TVs e o servidor estão na mesma rede.<br><br>
+        Você ainda pode cadastrar manualmente em "Adicionar TV".
+      </div>`;
+    return;
+  }
+  window._detectItems = items;
+  list.innerHTML = items.map((d, i) => {
+    const brand = d.brand === 'webos' ? 'LG' : 'Roku';
+    const badge = `<span class="tipo-badge tipo-${d.brand}">${brand}</span>`;
+    const status = `<button class="btn btn-launch" style="min-width:92px;" onclick="useDetected(window._detectItems[${i}])">＋ Adicionar</button>`;
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;
+                  background:var(--surface2);border-radius:var(--radius-sm);
+                  padding:12px 14px;margin-bottom:8px;">
+        <div>
+          <div style="font-size:14px;font-weight:600;">${esc(d.nome)} ${badge}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px;">
+            ${esc(d.ip)}${d.port ? ' · porta ' + d.port : ''}${d.mac ? ' · MAC ' + esc(d.mac) : ''}
+          </div>
+        </div>
+        ${status}
+      </div>`;
+  }).join('');
+}
+
+function useDetected(d) {
+  closeDetect();
+  openModal({
+    nome: d.nome === 'Roku' || d.nome === 'LG webOS' ? '' : d.nome,
+    tipo: d.brand,
+    ip: d.ip,
+    mac: d.mac || '',
+  });
+}
+
+function closeDetect() {
+  document.getElementById('modal-detect-overlay').style.display = 'none';
+}
+
 // ── Modal Cadastro/Edição ───────────────────────────────────────────────
+function onTipoChange() {
+  const tipo = document.getElementById('f-tipo').value;
+  document.querySelectorAll('.field[data-tipo-vis]').forEach(f => f.classList.toggle('vis', f.dataset.tipoVis === tipo));
+  const img = document.getElementById('f-image-label');
+  img.textContent = tipo === 'webos' ? 'URL do kiosk (página da LG)' : 'URL da imagem (snapshot Roku)';
+}
+
 function openModal(tv = null) {
   _editId = tv?.id || null;
-  document.getElementById('modal-title').textContent = tv ? 'Editar TV' : 'Adicionar TV Roku';
+  document.getElementById('modal-title').textContent = tv ? 'Editar TV' : 'Adicionar TV';
   document.getElementById('f-nome').value    = tv?.nome       || '';
+  document.getElementById('f-tipo').value    = tv?.tipo       || 'roku';
   document.getElementById('f-ip').value      = tv?.ip         || '';
   document.getElementById('f-channel').value = tv?.channel_id || '';
+  document.getElementById('f-mac').value      = tv?.mac        || '';
+  document.getElementById('f-kiosk-app').value = tv?.kiosk_app_id || '';
   document.getElementById('f-image').value    = tv?.image_url  || '';
   document.getElementById('f-watchdog').checked = tv?.watchdog ?? true;
   document.getElementById('f-enabled').checked  = tv?.enabled  ?? true;
   const diasIniciais = tv ? rulesToDays(tv) : DIAS.map(() => ({ on: '08:00', off: '18:00' }));
   writeDays(diasIniciais);
+  onTipoChange();
   document.getElementById('modal-overlay').classList.add('open');
 }
 
@@ -638,10 +822,14 @@ function scheduleSummary(tv) {
 async function saveTV() {
   const schedules = compressRules(readDays());
   const def = schedules.length ? schedules[0] : null;
+  const tipo = document.getElementById('f-tipo').value === 'webos' ? 'webos' : 'roku';
   const body = {
     nome:         document.getElementById('f-nome').value.trim(),
+    tipo,
     ip:           document.getElementById('f-ip').value.trim(),
-    channel_id:   document.getElementById('f-channel').value.trim(),
+    channel_id:   tipo === 'roku' ? document.getElementById('f-channel').value.trim() : '',
+    mac:          tipo === 'webos' ? document.getElementById('f-mac').value.trim() : '',
+    kiosk_app_id: tipo === 'webos' ? document.getElementById('f-kiosk-app').value.trim() : '',
     image_url:    document.getElementById('f-image').value.trim(),
     schedules,
     schedule_on:  def ? def.on : '',
@@ -675,7 +863,6 @@ async function fetchAppsForModal() {
   const ip = document.getElementById('f-ip').value.trim();
   if (!ip) { toast('Insira o IP da TV primeiro.', 'err'); return; }
 
-  // Descobre o ID da TV pelo IP
   try {
     const tvs = await apiFetch(API);
     const tv = tvs.find(t => t.ip === ip);
