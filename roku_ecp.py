@@ -596,8 +596,8 @@ async def start_roku_watcher():
 
 def _roku_tv_or_404(tv_id: str) -> dict:
     """Busca uma TV garantindo que ela seja do tipo Roku."""
-    tv = _roku_tv_or_404(tv_id)
-    if tv_tipo(tv) != "roku":
+    tv = _get_tv(tv_id)
+    if tv is None or tv_tipo(tv) != "roku":
         raise HTTPException(status_code=404, detail="TV nao encontrada (marca diferente)")
     return tv
 
@@ -763,6 +763,32 @@ async def get_visualizador():
     if not path.exists():
         raise HTTPException(status_code=404, detail="Visualizador não encontrado no módulo.")
     return FileResponse(path)
+
+
+_VELOCIMETRO_DADOS_URL = (
+    "https://seibtcomercial.github.io/VELOCIMETRO_SEIBT_-/dados.json"
+)
+
+
+@roku_router.get("/dados.json")
+async def api_velocimetro_dados():
+    """Proxy do dados.json do velocímetro (GitHub Pages).
+
+    O app.js embutido no visualizador.html busca ``dados.json`` relativo à
+    página; este endpoint evita depender de internet na TV (o servidor busca
+    no GitHub uma vez e devolve para a TV pela LAN).
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(_VELOCIMETRO_DADOS_URL)
+        if r.status_code != 200:
+            raise HTTPException(status_code=502, detail="dados.json remoto indisponível")
+        return JSONResponse(content=r.json())
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"[roku] Proxy dados.json falhou: {e}")
+        raise HTTPException(status_code=502, detail="Falha ao buscar dados.json remoto")
 
 
 @roku_router.get("/painel")
